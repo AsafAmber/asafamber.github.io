@@ -3,148 +3,143 @@ const remoteConnection = new RTCPeerConnection();
 let sendChannel;
 let receiveChannel;
 let fileMeta;
-
 const fileInput = document.getElementById('fileInput');
 const sendButton = document.getElementById('sendButton');
 const receiveBox = document.getElementById('receiveBox');
+var sendOk = false;
+const buttonSendText = document.getElementById('sendButtonText');
+//
 
-sendButton.addEventListener('click', () => {
-    const file = fileInput.files[0];
-    if (file) {
-        fileMeta = { size: file.size, name: file.name };
-        sendFile(file);
-    }
+let username = prompt("Please enter your username: ");
+while (username == null || username == "") {
+  username = prompt("Please enter your username: ");
+}
+document.getElementById('username').innerHTML += username;
+
+
+const wss1 = new WebSocket('ws://localhost:8080');
+const configuration = {'iceServers': [{'urls': 'stun:stun.l.google.com:19302'}]};
+const peerConnection = new RTCPeerConnection(configuration);
+const dataChannel = peerConnection.createDataChannel("MYdataChannel");
+peerConnection.addEventListener('datachannel', (event) => {
+    const dataChannel = event.channel;
 });
+/*dataChannel.addEventListener("open", (event) => {
+  beginTransmission(dataChannel);
+});*/
 
-const ws = new WebSocket('ws://localhost:8080');
+//requestRemoteChannel(dataChannel.id);
 
-ws.onmessage = async (message) => {
-    try {
-        let data;
-        try {
-            data = JSON.parse(message.data);
-            console.log("parse success");
-        } catch (e) {
-            console.log("parse failed");
-            handleFileData(message.data);
-            return;
-        }
+const messageBox = document.querySelector('#textArea');
+const sendButtonText = document.querySelector('#sendButtonText');
+// Send a simple text message when we click the button
+/*buttonSendText.addEventListener('click', event => {
+    sendOk = false;
+    const message = messageBox.textContent;
+    document.getElementById('incomingMessages').innerHTML += "----" + message + '\n';
+    wss1.send(message);
+});*/
 
-        if (data.sdp) {
-            if (data.sdp.type === 'offer') {
-                await remoteConnection.setRemoteDescription(data.sdp);
-                const answer = await remoteConnection.createAnswer();
-                await remoteConnection.setLocalDescription(answer);
-                ws.send(JSON.stringify({ sdp: remoteConnection.localDescription }));
-            } else if (data.sdp.type === 'answer') {
-                await localConnection.setRemoteDescription(data.sdp);
-            }
-        } else if (data.candidate) {
-            const candidate = new RTCIceCandidate(data.candidate);
-            if (data.isLocal) {
-                await localConnection.addIceCandidate(candidate);
-            } else {
-                await remoteConnection.addIceCandidate(candidate);
-            }
-        } else if (data.fileMeta) {
-            fileMeta = data.fileMeta;
-            console.log("File metadata received:", fileMeta);
-        }
-    } catch (e) {
-        console.error('Failed to process message', e);
+const incomingMessages = document.querySelector('#incomingMessages');
+function sendMessage() {
+  let message = document.getElementById('textArea').value;
+  const messageElement = document.createElement('div');
+  messageElement.textContent = "me: " + message.replace(/\n/g, "\n       ");
+  messageElement.style.borderLeft = "thick solid #004d99";
+  receiveBox.appendChild(messageElement);
+  message = username + ": " + message;
+  wss1.send(message);
+}
+/*wss1.onmessage = function(event) {
+  const message = event.data;
+
+  // Create a new div element for the incoming message
+  const messageElement = document.createElement('div');
+  messageElement.textContent = message;
+
+  // Append the new message to the message display div
+  receiveBox.appendChild(messageElement);
+}*/
+//
+///
+wss1.onmessage = function(event) {
+    const blob = event.data;
+
+    // Check if the data is a Blob object
+    if (blob instanceof Blob) {
+        // Convert Blob to text
+        blobToText(blob).then(text => {
+            //displayMessage(text); //original
+            convertToDiv2(text); //test
+        }).catch(error => {
+            console.error('Error reading Blob:', error);
+        });
+    } else {
+        // Handle non-Blob messages if necessary
+        console.log('Received non-Blob data:', blob);
     }
 };
 
-localConnection.onicecandidate = ({ candidate }) => {
-    if (candidate) {
-        ws.send(JSON.stringify({ candidate, isLocal: true }));
-    }
-};
-
-remoteConnection.onicecandidate = ({ candidate }) => {
-    if (candidate) {
-        ws.send(JSON.stringify({ candidate, isLocal: false }));
-    }
-};
-
-function sendFile(file) {
-    sendChannel = localConnection.createDataChannel('sendDataChannel');
-    sendChannel.binaryType = 'arraybuffer';
-    sendChannel.onopen = () => {
-        ws.send(JSON.stringify({ fileMeta }));
-        const chunkSize = 16 * 1024;
-        let offset = 0;
+// Function to convert Blob to text
+function blobToText(blob) {
+    return new Promise((resolve, reject) => {
         const reader = new FileReader();
-
-        reader.onload = (event) => {
-            sendChannel.send(event.target.result);
-            offset += chunkSize;
-            if (offset < file.size) {
-                readSlice(offset);
-            }
+        reader.onload = () => {
+            resolve(reader.result);
         };
-
-        const readSlice = (o) => {
-            const slice = file.slice(o, o + chunkSize);
-            reader.readAsArrayBuffer(slice);
+        reader.onerror = () => {
+            reject(new Error('Failed to read Blob as text'));
         };
-
-        readSlice(0);
-    };
-
-    localConnection.createOffer().then(offer => {
-        return localConnection.setLocalDescription(offer);
-    }).then(() => {
-        ws.send(JSON.stringify({ sdp: localConnection.localDescription }));
+        reader.readAsText(blob);
     });
-
-    remoteConnection.ondatachannel = (event) => {
-        receiveChannel = event.channel;
-        receiveChannel.binaryType = 'arraybuffer';
-        let receivedBuffers = [];
-
-        receiveChannel.onmessage = (event) => {
-            receivedBuffers.push(event.data);
-
-            if (receivedBuffers.reduce((acc, chunk) => acc + chunk.byteLength, 0) >= fileMeta.size) {
-                const receivedBlob = new Blob(receivedBuffers);
-                displayReceivedFile(receivedBlob, fileMeta.name);
-                receivedBuffers = [];
-            }
-        };
-    };
-    console.log("send success!");
 }
 
-function handleFileData(data) {
-    console.log("handleFileData1");
-    console.log(receiveChannel);
-    console.log(!receiveChannel);
-    if (!receiveChannel) return;
-    let receivedBuffers = [];
-    console.log("handleFileData2");
-    receivedBuffers.push(data);
+// Function to display message in the div
+function displayMessage(message) {
+    const messageElement = document.createElement('div');
+    messageElement.textContent = message;
+    messageElement.style.borderLeft = "thick solid white"
+    receiveBox.appendChild(messageElement);
+}
+function convertToDiv2(message) {
+  //let textareaContent = document.getElementById("textArea").value;
+  //let divTest = document.getElementById("testRun");
+  //let str = "";
+  let len = 0;
+  while(message[len] + message[len + 1] != ": ") {
+    len++;
+  }
+  len+= 1;
+  let arr = new Array((2 * len) + 1);
+  arr[0] = "\n";
+  for (let i = 1; i < 2 * len + 1; i += 2) {
+    arr[i] = " ";
+    arr[i + 1] = " ";
+  }
 
-    if (receivedBuffers.reduce((acc, chunk) => acc + chunk.byteLength, 0) >= fileMeta.size) {
-        console.log("if entered");
-        const receivedBlob = new Blob(receivedBuffers);
-        displayReceivedFile(receivedBlob, fileMeta.name);
-        receivedBuffers = [];
+  let str = "";
+  for (let i = 0; i < 2 * len; i++) {
+    if (arr[i] == undefined || arr[i] == null) {
+      break;
     }
+    str+=arr[i];
+  }
+  str+=" ";
+  const messageElement = document.createElement('div');
+  messageElement.textContent = message.replace(/\n/g, str);
+  messageElement.style.borderLeft = "thick solid white"
+  receiveBox.appendChild(messageElement);
+  //divTest.innerHTML = '<div dir = "auto">' + textareaContent.replace(/\n/g, '<br>') + '</div>';
+}
+//add class to div with img in editable div
+function addClass(divTest) {
+  let src = "<img";
+  let text = divTest.inenerHTML;
+  let index = 0;
 }
 
-function displayReceivedFile(blob, fileName) {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName;
-    link.textContent = `Download ${fileName}`;
-    receiveBox.appendChild(link);
 
-    if (fileName.match(/\.(jpeg|jpg|gif|png)$/)) {
-        const img = document.createElement('img');
-        img.src = url;
-        img.style.maxWidth = '100%';
-        receiveBox.appendChild(img);
-    }
+function spellCheckOnOff() {
+  let checkBox = document.getElementById("checkBox");
+  document.getElementById("textArea").setAttribute("spellcheck", checkBox.checked);
 }
