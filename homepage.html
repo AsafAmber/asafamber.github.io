@@ -1,8 +1,113 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
   <head>
-      <title>Test Website</title>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>WebRTC File Transfer</title>
+      <style>
+          #incomingMessages {
+            height: 100px;
+            width: 100px;
+            border: 5px solid red;
+            white-space: pre-wrap;
+          }
+          #buttonContainer {
+            height: 300px;
+            width: 450px;
+            border: 3px solid red;
+            position: absolute;
+            margin-left: 70%;
+            margin-bottom: 500px;
+          }
+          #receiveBox {
+            white-space: pre-wrap;
+          }
+          #textArea {
+            resize: vertical;
+          }
+          .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+          }
+
+          .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+          }
+
+          .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            -webkit-transition: .4s;
+            transition: .4s;
+          }
+
+          .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            -webkit-transition: .4s;
+            transition: .4s;
+          }
+
+          input:checked + .slider {
+            background-color: #2196F3;
+          }
+
+          input:focus + .slider {
+            box-shadow: 0 0 1px #2196F3;
+          }
+
+          input:checked + .slider:before {
+            -webkit-transform: translateX(26px);
+            -ms-transform: translateX(26px);
+            transform: translateX(26px);
+          }
+
+          /* Rounded sliders */
+          .slider.round {
+            border-radius: 34px;
+          }
+
+          .slider.round:before {
+            border-radius: 50%;
+          }
+      </style>
   </head>
   <body>
-    <p>This is the home page of the test website.</p>
+      <h1>WebRTC File Transfer</h1>
+      <p id="username">username: </p>
+      <div>
+        <textarea id="textArea" cols="141" rows="10"></textarea>
+        <button id="sendButtonText" onclick="sendMessage()">Send Text</button>
+        <label class="switch">
+          <input type="checkbox" id ="checkBox" onclick="spellCheckOnOff()" checked>
+          <span class="slider round"></span>
+        </label>
+        <div id="buttonContainer">
+          <button type="button" onclick="prepToFixText(4)">fix broken text</button>
+          <button type="button" onclick="dirFixRtlToLtr()">fix math rtl ==> ltr</button>
+          <button type="button" onclick="swapPushByOneLeftAppendEnd()">move end to start</button>
+          <button type ="button" onclick="convertToDiv()">Convert to div</button>
+          <script src="textFixing.js"></script>
+        </div>
+      </div>
+      <div id = "incomingMessages"></div>
+      <input type="file" id="fileInput" name="fileField"/>
+      <button id="sendButton">Send File</button>
+      <div id="receiveBox"></div>
+      <script src="app.js"></script>
   </body>
 </html>
